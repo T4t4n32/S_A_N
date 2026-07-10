@@ -1,8 +1,0 @@
-{
-  "appId": "com.san.aplication",
-  "appName": "SAN",
-  "webDir": "www",
-  "server": {
-    "androidScheme": "http"
-  }
-}

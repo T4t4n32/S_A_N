@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { 
+    font-family: 'Inter', sans-serif; 
+    -webkit-tap-highlight-color: transparent;
+    background: #0a0a0f;
+    color: #e5e7eb;
+}
+.sticky-col { position: sticky; left: 0; z-index: 20; }
+.sticky-header { position: sticky; top: 0; z-index: 30; }
+.sticky-corner { position: sticky; top: 0; left: 0; z-index: 40; }
+.grade-input { 
+    width: 60px; 
+    height: 40px; 
+    text-align: center; 
+    font-size: 15px; 
+    font-weight: 700;
+    background: rgba(30, 30, 40, 0.6);
+    border: 1px solid rgba(75, 85, 99, 0.4);
+    color: #f3f4f6;
+    transition: all 0.2s;
+}
+.grade-input:focus { 
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    background: rgba(30, 30, 40, 0.9);
+}
+.grade-input::placeholder { color: #4b5563; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.tooltip { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+.has-tooltip:hover .tooltip { visibility: visible; opacity: 1; }
+
+.glass-card {
+    background: linear-gradient(145deg, rgba(24, 24, 32, 0.9), rgba(18, 18, 24, 0.95));
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(75, 85, 99, 0.25);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+.glow-purple { box-shadow: 0 0 20px rgba(168, 85, 247, 0.3); }
+.glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
+
+.bg-grid {
+    background-image: 
+        linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+.gradient-text {
+    background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+
+@media (max-width: 640px) {
+    .sticky-col { min-width: 140px; }
+    .grade-input { width: 54px; height: 44px; }
+}
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
