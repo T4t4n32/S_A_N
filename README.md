@@ -28,20 +28,6 @@ La filosofía de SAN es simple:
 
 ---
 
-## Vista previa
-
-<p align="center">
-  <img src="docs/screenshots/tabla-notas.png" alt="Tabla de calificaciones por materia" width="100%" />
-  <br/><em>Registro de notas por materia y periodo, con promedios calculados en vivo.</em>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/resumen.png" alt="Panel de resumen académico" width="100%" />
-  <br/><em>Panel de resumen: promedio general del grupo, por materia y por estudiante.</em>
-</p>
-
----
-
 ## ¿Por qué nació SAN?
 
 La idea surgió a partir de una necesidad real.
