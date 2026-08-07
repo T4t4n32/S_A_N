@@ -65,7 +65,70 @@ const DEFAULT_SLOTS = [
     { id: 5, name: "Recuperación / Extra", description: "", hasDescription: false }
 ];
 
-const STORAGE_KEY = "ciudadela_desepaz_notas_3_4_v5_dark";
+const GRADES_STORAGE_KEY = "ciudadela_desepaz_notas_3_4_v5_dark";
+const CONFIG_STORAGE_KEY = "san_config_v1";
+
+const EMPTY_CONFIG_FORM = { role: "profesor", name: "", institution: "", group: "" };
+
+function ConfigFields({ form, onChange }) {
+    return (
+        <div className="space-y-4">
+            <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">¿Cuál es tu rol?</label>
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onChange({ ...form, role: "profesor" })}
+                        className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border ${form.role === "profesor" ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white border-blue-500 shadow-lg" : "bg-slate-800/60 text-slate-300 border-slate-700/50 hover:bg-slate-800"}`}
+                    >
+                        Soy profesor(a)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onChange({ ...form, role: "estudiante" })}
+                        className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border ${form.role === "estudiante" ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white border-purple-500 shadow-lg" : "bg-slate-800/60 text-slate-300 border-slate-700/50 hover:bg-slate-800"}`}
+                    >
+                        Soy estudiante
+                    </button>
+                </div>
+            </div>
+            <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    {form.role === "profesor" ? "Nombre del profesor(a)" : "Tu nombre"}
+                </label>
+                <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => onChange({ ...form, name: e.target.value })}
+                    placeholder="Nombre completo"
+                    className="w-full p-3 bg-slate-900/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm text-slate-200 placeholder-slate-600"
+                    required
+                />
+            </div>
+            <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Institución / Colegio</label>
+                <input
+                    type="text"
+                    value={form.institution}
+                    onChange={(e) => onChange({ ...form, institution: e.target.value })}
+                    placeholder="Nombre del colegio o institución"
+                    className="w-full p-3 bg-slate-900/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm text-slate-200 placeholder-slate-600"
+                    required
+                />
+            </div>
+            <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Grado o grupo</label>
+                <input
+                    type="text"
+                    value={form.group}
+                    onChange={(e) => onChange({ ...form, group: e.target.value })}
+                    placeholder="Ej: Cuarto 3-4, Grado 10-A, Sexto B..."
+                    className="w-full p-3 bg-slate-900/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm text-slate-200 placeholder-slate-600"
+                />
+            </div>
+        </div>
+    );
+}
 
 function App() {
     const [students, setStudents] = useState([]);
@@ -77,7 +140,11 @@ function App() {
     const [isLoaded, setIsLoaded] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
     const [showSlotManager, setShowSlotManager] = useState(false);
-    
+
+    const [config, setConfig] = useState(null);
+    const [showConfigModal, setShowConfigModal] = useState(false);
+    const [configForm, setConfigForm] = useState(EMPTY_CONFIG_FORM);
+
     const [annotationModal, setAnnotationModal] = useState({
         isOpen: false,
         studentId: null,
@@ -87,7 +154,7 @@ function App() {
     });
 
     useEffect(() => {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(GRADES_STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
             setStudents(parsed.students || DEFAULT_STUDENTS);
@@ -106,14 +173,43 @@ function App() {
             setAnnotations({});
             setActiveSubjectId(1);
         }
+
+        const savedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
+        if (savedConfig) {
+            setConfig(JSON.parse(savedConfig));
+        }
+
         setIsLoaded(true);
     }, []);
 
     useEffect(() => {
         if (isLoaded) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, subjects, gradeSlots, grades, annotations }));
+            localStorage.setItem(GRADES_STORAGE_KEY, JSON.stringify({ students, subjects, gradeSlots, grades, annotations }));
         }
     }, [students, subjects, gradeSlots, grades, annotations, isLoaded]);
+
+    useEffect(() => {
+        if (config) {
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+        }
+    }, [config]);
+
+    const openConfigModal = useCallback(() => {
+        setConfigForm(config || EMPTY_CONFIG_FORM);
+        setShowConfigModal(true);
+    }, [config]);
+
+    const saveConfig = useCallback((e) => {
+        e.preventDefault();
+        if (!configForm.name.trim() || !configForm.institution.trim()) return;
+        setConfig({
+            role: configForm.role,
+            name: configForm.name.trim(),
+            institution: configForm.institution.trim(),
+            group: configForm.group.trim()
+        });
+        setShowConfigModal(false);
+    }, [configForm]);
 
     const updateGrade = useCallback((studentId, subjectId, slotId, value) => {
         const key = `${studentId}-${subjectId}-${slotId}`;
@@ -339,6 +435,29 @@ function App() {
 
     if (!isLoaded) return <div className="flex items-center justify-center h-screen text-slate-500">Cargando sistema...</div>;
 
+    if (!config) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-4">
+                <div className="glass-card rounded-2xl w-full max-w-md p-6 md:p-8 border border-slate-700/50 shadow-2xl animate-fade-in">
+                    <div className="flex flex-col items-center text-center mb-6">
+                        <img src={logoIcon} alt="SAN" className="w-16 h-16 mb-4 drop-shadow-lg" />
+                        <h1 className="text-xl font-extrabold tracking-tight gradient-text">Bienvenido a SAN</h1>
+                        <p className="text-slate-400 text-sm mt-2">Antes de empezar, cuéntanos quién eres y en dónde vas a usar el sistema.</p>
+                    </div>
+                    <form onSubmit={saveConfig}>
+                        <ConfigFields form={configForm} onChange={setConfigForm} />
+                        <button
+                            type="submit"
+                            className="w-full mt-6 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg glow-blue"
+                        >
+                            Comenzar
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen p-3 md:p-6 max-w-7xl mx-auto pb-20">
             <header className="mb-6 glass-card p-5 md:p-7 rounded-2xl relative overflow-hidden">
@@ -352,16 +471,19 @@ function App() {
                                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                                 <span className="text-xs font-bold uppercase tracking-widest text-blue-400">Sistema Académico</span>
                             </div>
-                            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight gradient-text">I.E.T. CIUDADELA DESEPAZ</h1>
-                            <p className="text-slate-400 text-sm md:text-base mt-2 font-medium">Sede: Nuevo Amanecer · Año Lectivo: 2025-2026</p>
+                            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight gradient-text">{config.institution}</h1>
+                            <p className="text-slate-400 text-sm md:text-base mt-2 font-medium">Año Lectivo: {new Date().getFullYear()}</p>
                         </div>
                     </div>
-                    <div className="text-right w-full md:w-auto">
+                    <div className="text-right w-full md:w-auto flex items-center gap-2 justify-end">
                         <div className="inline-block bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 px-5 py-3 rounded-xl backdrop-blur-sm w-full md:w-auto text-center md:text-right">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-1">Director de Grupo</p>
-                            <p className="text-lg md:text-xl font-bold text-white">Orlando Sanchez Torres</p>
-                            <p className="text-xs font-medium mt-1 text-slate-400">Grado: Cuarto 3-4 · Jornada: Única</p>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-1">{config.role === "profesor" ? "Profesor(a)" : "Estudiante"}</p>
+                            <p className="text-lg md:text-xl font-bold text-white">{config.name}</p>
+                            {config.group && <p className="text-xs font-medium mt-1 text-slate-400">Grado: {config.group}</p>}
                         </div>
+                        <button onClick={openConfigModal} title="Editar configuración" className="p-2.5 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 text-slate-400 hover:text-white rounded-xl transition-colors shrink-0">
+                            <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        </button>
                     </div>
                 </div>
             </header>
@@ -383,7 +505,7 @@ function App() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                     Materia
                 </button>
-                <button onClick={() => { if(confirm('¿Restaurar datos originales? Se perderán todos los cambios.')) { localStorage.removeItem(STORAGE_KEY); window.location.reload(); } }} className="flex items-center gap-2 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 text-slate-400 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm ml-auto md:ml-0">
+                <button onClick={() => { if(confirm('¿Restaurar datos originales? Se perderán todos los cambios.')) { localStorage.removeItem(GRADES_STORAGE_KEY); window.location.reload(); } }} className="flex items-center gap-2 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 text-slate-400 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm ml-auto md:ml-0">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                     Reset
                 </button>
@@ -608,6 +730,42 @@ function App() {
             <footer className="mt-8 text-center text-slate-500 text-xs md:text-sm pb-8">
                 <p>Sistema de Control Académico · Alcaldía de Santiago de Cali · Secretaría de Educación</p>
             </footer>
+
+            {showConfigModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="glass-card rounded-2xl w-full max-w-md p-6 border border-slate-700/50 shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <div className="p-2 bg-blue-500/20 rounded-lg">
+                                    <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                </div>
+                                Editar configuración
+                            </h3>
+                            <button onClick={() => setShowConfigModal(false)} className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                        <form onSubmit={saveConfig}>
+                            <ConfigFields form={configForm} onChange={setConfigForm} />
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfigModal(false)}
+                                    className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg font-medium hover:bg-slate-700 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg glow-blue"
+                                >
+                                    Guardar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {annotationModal.isOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
