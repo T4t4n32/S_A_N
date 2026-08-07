@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import logoIcon from './assets/logo-icon.png';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
+import logoIcon from './assets/logo-icon.webp';
 
 const DEFAULT_STUDENTS = [
     { id: 1, name: "Aguas Angulo Emely Yuleisi" },
@@ -196,6 +196,87 @@ function ConfigFields({ form, onChange }) {
     );
 }
 
+// Typing a grade only ever touches the currently active subject's keys for
+// one student (see updateGrade/openAnnotationModal call sites), and every
+// action that changes data for OTHER subjects also changes activeSubjectId,
+// gradeSlots or the students/subjects arrays themselves — all of which this
+// comparator already checks by reference. So comparing just this row's
+// active-subject grade/annotation keys is enough to know whether the row's
+// own displayed values (including "Promedio Global") are still current,
+// without re-checking every subject on every render.
+function areRowPropsEqual(prev, next) {
+    if (prev.student !== next.student) return false;
+    if (prev.index !== next.index) return false;
+    if (prev.gradeSlots !== next.gradeSlots) return false;
+    if (prev.activeSubjectId !== next.activeSubjectId) return false;
+    if (prev.role !== next.role) return false;
+    for (let i = 0; i < next.gradeSlots.length; i++) {
+        const key = `${next.student.id}-${next.activeSubjectId}-${next.gradeSlots[i].id}`;
+        if (prev.grades[key] !== next.grades[key]) return false;
+        if (prev.annotations[key] !== next.annotations[key]) return false;
+    }
+    return true;
+}
+
+const StudentRow = memo(function StudentRow({
+    student, index, gradeSlots, activeSubjectId, grades, annotations, role,
+    updateGrade, openAnnotationModal, removeStudent,
+    getGradeColor, getAvgColor, getStudentSubjectAverage, getStudentGlobalAverage
+}) {
+    return (
+        <tr className="hover:bg-slate-800/30 transition-colors">
+            <td className="sticky-col px-3 md:px-4 py-3 font-medium text-slate-200 border-r border-slate-700/50 bg-slate-900/90 backdrop-blur-sm">
+                <div className="flex items-center gap-2 md:gap-3">
+                    <span className="text-slate-500 font-mono text-xs w-5 md:w-6">{index + 1}</span>
+                    <span className="leading-tight text-xs md:text-sm">{student.name}</span>
+                </div>
+            </td>
+            {gradeSlots.map(slot => {
+                const gradeKey = `${student.id}-${activeSubjectId}-${slot.id}`;
+                const grade = grades[gradeKey];
+                const hasAnnotation = !!annotations[gradeKey];
+
+                return (
+                    <td key={slot.id} className="px-1 md:px-2 py-2 border-r border-slate-800/50 text-center relative">
+                        <div className="flex items-center justify-center gap-1">
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                value={grade !== undefined ? grade : ""}
+                                onChange={(e) => updateGrade(student.id, activeSubjectId, slot.id, e.target.value)}
+                                className={`grade-input rounded-lg px-2 py-1 transition-colors ${getGradeColor(grade)}`}
+                                placeholder="-"
+                            />
+                            <button
+                                onClick={() => openAnnotationModal(student.id, activeSubjectId, slot.id)}
+                                className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${hasAnnotation ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30' : 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'}`}
+                                title={hasAnnotation ? "Ver/Editar anotación" : "Agregar anotación"}
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </td>
+                );
+            })}
+            <td className={`px-2 md:px-3 py-3 font-bold text-center border-l border-slate-700/50 bg-blue-500/5 text-sm md:text-base ${getAvgColor(getStudentSubjectAverage(student.id, activeSubjectId))}`}>
+                {getStudentSubjectAverage(student.id, activeSubjectId)}
+            </td>
+            <td className={`px-2 md:px-3 py-3 font-bold text-center border-l border-slate-700/50 bg-purple-500/5 text-sm md:text-base ${getAvgColor(getStudentGlobalAverage(student.id))}`}>
+                {getStudentGlobalAverage(student.id)}
+            </td>
+            {role === "profesor" && (
+                <td className="px-1 md:px-2 py-3 text-center">
+                    <button onClick={() => removeStudent(student.id)} className="p-2 hover:bg-red-500/20 text-slate-600 hover:text-red-400 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center mx-auto" title="Eliminar estudiante">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </td>
+            )}
+        </tr>
+    );
+}, areRowPropsEqual);
+
 function App() {
     const [students, setStudents] = useState([]);
     const [subjects, setSubjects] = useState([]);
@@ -253,11 +334,27 @@ function App() {
         setIsLoaded(true);
     }, []);
 
+    const latestGradesDataRef = useRef(null);
+    latestGradesDataRef.current = { students, subjects, gradeSlots, grades, annotations };
+
+    // Debounced so a burst of keystrokes (typing several grades) doesn't hit
+    // localStorage on every single one — flushed immediately on tab close/
+    // reload below so nothing typed in the last stretch gets lost.
     useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(GRADES_STORAGE_KEY, JSON.stringify({ students, subjects, gradeSlots, grades, annotations }));
-        }
+        if (!isLoaded) return;
+        const handle = setTimeout(() => {
+            localStorage.setItem(GRADES_STORAGE_KEY, JSON.stringify(latestGradesDataRef.current));
+        }, 400);
+        return () => clearTimeout(handle);
     }, [students, subjects, gradeSlots, grades, annotations, isLoaded]);
+
+    useEffect(() => {
+        const flush = () => {
+            localStorage.setItem(GRADES_STORAGE_KEY, JSON.stringify(latestGradesDataRef.current));
+        };
+        window.addEventListener("beforeunload", flush);
+        return () => window.removeEventListener("beforeunload", flush);
+    }, []);
 
     useEffect(() => {
         if (config) {
@@ -450,9 +547,9 @@ function App() {
         }
     };
 
-    const removeStudent = (studentId) => {
+    const removeStudent = useCallback((studentId) => {
         if (confirm("¿Está seguro de eliminar a este estudiante? Se borrarán todas sus notas y anotaciones.")) {
-            setStudents(students.filter(s => s.id !== studentId));
+            setStudents(prev => prev.filter(s => s.id !== studentId));
             setGrades(prev => {
                 const next = { ...prev };
                 Object.keys(next).forEach(key => {
@@ -468,7 +565,7 @@ function App() {
                 return next;
             });
         }
-    };
+    }, []);
 
     const closeImportModal = useCallback(() => {
         setShowImportModal(false);
@@ -853,56 +950,23 @@ function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
                             {students.map((student, index) => (
-                                <tr key={student.id} className="hover:bg-slate-800/30 transition-colors">
-                                    <td className="sticky-col px-3 md:px-4 py-3 font-medium text-slate-200 border-r border-slate-700/50 bg-slate-900/90 backdrop-blur-sm">
-                                        <div className="flex items-center gap-2 md:gap-3">
-                                            <span className="text-slate-500 font-mono text-xs w-5 md:w-6">{index + 1}</span>
-                                            <span className="leading-tight text-xs md:text-sm">{student.name}</span>
-                                        </div>
-                                    </td>
-                                    {gradeSlots.map(slot => {
-                                        const gradeKey = `${student.id}-${activeSubjectId}-${slot.id}`;
-                                        const grade = grades[gradeKey];
-                                        const hasAnnotation = !!annotations[gradeKey];
-                                        
-                                        return (
-                                            <td key={slot.id} className="px-1 md:px-2 py-2 border-r border-slate-800/50 text-center relative">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <input
-                                                        type="text"
-                                                        inputMode="decimal"
-                                                        value={grade !== undefined ? grade : ""}
-                                                        onChange={(e) => updateGrade(student.id, activeSubjectId, slot.id, e.target.value)}
-                                                        className={`grade-input rounded-lg px-2 py-1 transition-colors ${getGradeColor(grade)}`}
-                                                        placeholder="-"
-                                                    />
-                                                    <button 
-                                                        onClick={() => openAnnotationModal(student.id, activeSubjectId, slot.id)}
-                                                        className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${hasAnnotation ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30' : 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'}`}
-                                                        title={hasAnnotation ? "Ver/Editar anotación" : "Agregar anotación"}
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        );
-                                    })}
-                                    <td className={`px-2 md:px-3 py-3 font-bold text-center border-l border-slate-700/50 bg-blue-500/5 text-sm md:text-base ${getAvgColor(getStudentSubjectAverage(student.id, activeSubjectId))}`}>
-                                        {getStudentSubjectAverage(student.id, activeSubjectId)}
-                                    </td>
-                                    <td className={`px-2 md:px-3 py-3 font-bold text-center border-l border-slate-700/50 bg-purple-500/5 text-sm md:text-base ${getAvgColor(getStudentGlobalAverage(student.id))}`}>
-                                        {getStudentGlobalAverage(student.id)}
-                                    </td>
-                                    {config.role === "profesor" && (
-                                        <td className="px-1 md:px-2 py-3 text-center">
-                                            <button onClick={() => removeStudent(student.id)} className="p-2 hover:bg-red-500/20 text-slate-600 hover:text-red-400 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center mx-auto" title="Eliminar estudiante">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                            </button>
-                                        </td>
-                                    )}
-                                </tr>
+                                <StudentRow
+                                    key={student.id}
+                                    student={student}
+                                    index={index}
+                                    gradeSlots={gradeSlots}
+                                    activeSubjectId={activeSubjectId}
+                                    grades={grades}
+                                    annotations={annotations}
+                                    role={config.role}
+                                    updateGrade={updateGrade}
+                                    openAnnotationModal={openAnnotationModal}
+                                    removeStudent={removeStudent}
+                                    getGradeColor={getGradeColor}
+                                    getAvgColor={getAvgColor}
+                                    getStudentSubjectAverage={getStudentSubjectAverage}
+                                    getStudentGlobalAverage={getStudentGlobalAverage}
+                                />
                             ))}
                         </tbody>
                         <tfoot className="bg-slate-900/80 border-t-2 border-slate-700/50 font-bold text-slate-300 text-xs md:text-sm">

@@ -1,0 +1,36 @@
+/*
+ * Hand-picked subset of @fontsource/inter: latin only (covers Spanish
+ * accents/ñ — latin-ext is for other Latin-based scripts we don't need)
+ * and woff2 only (Electron/Capacitor ship a modern Chromium runtime, no
+ * legacy browsers to support). Keeps the packaged app smaller than
+ * importing the full @fontsource/inter/*.css files, which bundle both
+ * subsets and both formats for every weight.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('@fontsource/inter/files/inter-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('@fontsource/inter/files/inter-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url('@fontsource/inter/files/inter-latin-800-normal.woff2') format('woff2');
+}
