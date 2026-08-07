@@ -70,6 +70,72 @@ const CONFIG_STORAGE_KEY = "san_config_v1";
 
 const EMPTY_CONFIG_FORM = { role: "profesor", name: "", institution: "", group: "" };
 
+const STUDENT_HEADER_ALIASES = ["estudiante", "estudiantes", "alumno", "alumnos"];
+const SUBJECT_HEADER_ALIASES = ["materia", "materias", "asignatura", "asignaturas"];
+
+function detectDelimiter(text) {
+    const firstLine = text.split(/\r?\n/)[0] || "";
+    const semicolons = (firstLine.match(/;/g) || []).length;
+    const commas = (firstLine.match(/,/g) || []).length;
+    return semicolons > commas ? ";" : ",";
+}
+
+function parseCSV(text, delimiter) {
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (inQuotes) {
+            if (char === '"') {
+                if (text[i + 1] === '"') { field += '"'; i++; }
+                else inQuotes = false;
+            } else {
+                field += char;
+            }
+        } else if (char === '"') {
+            inQuotes = true;
+        } else if (char === delimiter) {
+            row.push(field);
+            field = "";
+        } else if (char === "\n") {
+            row.push(field);
+            rows.push(row);
+            row = [];
+            field = "";
+        } else if (char === "\r") {
+            // ignore, newline is handled by \n
+        } else {
+            field += char;
+        }
+    }
+    if (field.length > 0 || row.length > 0) {
+        row.push(field);
+        rows.push(row);
+    }
+    return rows.filter(r => r.some(cell => cell.trim() !== ""));
+}
+
+function extractListsFromRows(rows) {
+    if (rows.length === 0) return { students: [], subjects: [], studentColFound: false, subjectColFound: false };
+    const header = rows[0].map(h => h.trim().toLowerCase());
+    const studentCol = header.findIndex(h => STUDENT_HEADER_ALIASES.includes(h));
+    const subjectCol = header.findIndex(h => SUBJECT_HEADER_ALIASES.includes(h));
+    const students = [];
+    const subjects = [];
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (studentCol !== -1 && row[studentCol] && row[studentCol].trim()) {
+            students.push(row[studentCol].trim());
+        }
+        if (subjectCol !== -1 && row[subjectCol] && row[subjectCol].trim()) {
+            subjects.push(row[subjectCol].trim());
+        }
+    }
+    return { students, subjects, studentColFound: studentCol !== -1, subjectColFound: subjectCol !== -1 };
+}
+
 function ConfigFields({ form, onChange }) {
     return (
         <div className="space-y-4">
@@ -144,6 +210,11 @@ function App() {
     const [config, setConfig] = useState(null);
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [configForm, setConfigForm] = useState(EMPTY_CONFIG_FORM);
+
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importPreview, setImportPreview] = useState(null);
+    const [importSelection, setImportSelection] = useState({ students: false, subjects: false });
+    const [importError, setImportError] = useState("");
 
     const [annotationModal, setAnnotationModal] = useState({
         isOpen: false,
@@ -399,6 +470,109 @@ function App() {
         }
     };
 
+    const closeImportModal = useCallback(() => {
+        setShowImportModal(false);
+        setImportPreview(null);
+        setImportError("");
+    }, []);
+
+    const handleImportFile = useCallback(async (e) => {
+        const fileInput = e.target;
+        const file = fileInput.files[0];
+        if (!file) return;
+        setImportError("");
+        setImportPreview(null);
+        try {
+            let rows;
+            if (/\.xlsx?$/i.test(file.name)) {
+                const XLSX = await import("xlsx");
+                const buffer = await file.arrayBuffer();
+                const workbook = XLSX.read(buffer, { type: "array" });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: "" })
+                    .map(row => row.map(cell => (cell === undefined || cell === null) ? "" : String(cell)));
+            } else {
+                const text = await file.text();
+                rows = parseCSV(text, detectDelimiter(text));
+            }
+            const { students: foundStudents, subjects: foundSubjects, studentColFound, subjectColFound } = extractListsFromRows(rows);
+            if (!studentColFound && !subjectColFound) {
+                setImportError('No se encontró una columna "Estudiantes" ni "Materias" en el archivo. Revisa que la primera fila tenga esos encabezados.');
+                return;
+            }
+            setImportPreview({ students: foundStudents, subjects: foundSubjects });
+            setImportSelection({
+                students: config?.role === "profesor" && foundStudents.length > 0,
+                subjects: foundSubjects.length > 0
+            });
+        } catch (err) {
+            setImportError("No se pudo leer el archivo. Verifica que sea un .csv o .xlsx válido.");
+        } finally {
+            fileInput.value = "";
+        }
+    }, [config]);
+
+    const downloadImportTemplate = useCallback(() => {
+        const rows = [
+            ["Estudiantes", "Materias"],
+            ["Juan Perez", "Matemáticas"],
+            ["Maria Lopez", "Lengua Castellana"],
+            ["", "Ciencias Naturales"]
+        ];
+        const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+        const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "plantilla_san.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+    }, []);
+
+    const confirmImport = useCallback(() => {
+        if (!importPreview) return;
+        const willImportStudents = config?.role === "profesor" && importSelection.students && importPreview.students.length > 0;
+        const willImportSubjects = importSelection.subjects && importPreview.subjects.length > 0;
+        if (!willImportStudents && !willImportSubjects) return;
+
+        const parts = [];
+        if (willImportStudents) parts.push(`${importPreview.students.length} estudiante(s)`);
+        if (willImportSubjects) parts.push(`${importPreview.subjects.length} materia(s)`);
+        if (!confirm(`Vas a reemplazar ${parts.join(" y ")} con los datos del archivo. Se perderán las notas y anotaciones asociadas a lo que se reemplace. ¿Continuar?`)) {
+            return;
+        }
+
+        let finalStudents = students;
+        let finalSubjects = subjects;
+
+        if (willImportStudents) {
+            finalStudents = importPreview.students.map((name, idx) => ({ id: idx + 1, name }));
+            setStudents(finalStudents);
+        }
+        if (willImportSubjects) {
+            finalSubjects = importPreview.subjects.map((name, idx) => ({ id: idx + 1, name }));
+            setSubjects(finalSubjects);
+            setActiveSubjectId(finalSubjects[0]?.id ?? null);
+        }
+
+        const studentIds = new Set(finalStudents.map(s => s.id));
+        const subjectIds = new Set(finalSubjects.map(s => s.id));
+        const prune = (obj) => {
+            const next = {};
+            Object.keys(obj).forEach(key => {
+                const [sid, subid] = key.split("-");
+                if (studentIds.has(Number(sid)) && subjectIds.has(Number(subid))) {
+                    next[key] = obj[key];
+                }
+            });
+            return next;
+        };
+        setGrades(prev => prune(prev));
+        setAnnotations(prev => prune(prev));
+
+        closeImportModal();
+    }, [importPreview, importSelection, config, students, subjects, closeImportModal]);
+
     const getGradeColor = useCallback((grade) => {
         if (grade === "" || grade === undefined) return "";
         const num = parseFloat(grade);
@@ -525,6 +699,10 @@ function App() {
                 <button onClick={addSubject} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-blue-500/20 text-blue-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                     Materia
+                </button>
+                <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-teal-500/20 text-teal-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 12v9m0-9l-3 3m3-3l3 3"></path></svg>
+                    Importar
                 </button>
                 <button onClick={() => { if(confirm('¿Restaurar datos originales? Se perderán todos los cambios.')) { localStorage.removeItem(GRADES_STORAGE_KEY); window.location.reload(); } }} className="flex items-center gap-2 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 text-slate-400 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm ml-auto md:ml-0">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -786,6 +964,92 @@ function App() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {showImportModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="glass-card rounded-2xl w-full max-w-lg p-6 border border-slate-700/50 shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <div className="p-2 bg-teal-500/20 rounded-lg">
+                                    <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 12v9m0-9l-3 3m3-3l3 3"></path></svg>
+                                </div>
+                                Importar {config.role === "profesor" ? "estudiantes y materias" : "materias"}
+                            </h3>
+                            <button onClick={closeImportModal} className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-slate-400 mb-4">
+                            Sube un archivo <span className="text-slate-300 font-medium">.csv</span> o <span className="text-slate-300 font-medium">.xlsx</span> con una columna
+                            {config.role === "profesor" ? <> "<b className="text-slate-200">Estudiantes</b>" y/o</> : null} "<b className="text-slate-200">Materias</b>".
+                            {" "}
+                            <button type="button" onClick={downloadImportTemplate} className="text-blue-400 hover:text-blue-300 hover:underline font-medium">
+                                Descargar plantilla de ejemplo
+                            </button>
+                        </p>
+
+                        <input
+                            type="file"
+                            accept=".csv,.xlsx,.xls"
+                            onChange={handleImportFile}
+                            className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-semibold hover:file:bg-blue-700 file:cursor-pointer cursor-pointer"
+                        />
+
+                        {importError && (
+                            <p className="mt-3 text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg p-3">{importError}</p>
+                        )}
+
+                        {importPreview && (
+                            <div className="mt-4 space-y-3">
+                                {config.role === "profesor" && importPreview.students.length > 0 && (
+                                    <label className="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700/50 rounded-lg cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={importSelection.students}
+                                            onChange={(e) => setImportSelection(prev => ({ ...prev, students: e.target.checked }))}
+                                            className="w-4 h-4 accent-emerald-500"
+                                        />
+                                        <span className="text-sm text-slate-200">Importar <b>{importPreview.students.length}</b> estudiante(s) — reemplaza la lista actual</span>
+                                    </label>
+                                )}
+                                {importPreview.subjects.length > 0 && (
+                                    <label className="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700/50 rounded-lg cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={importSelection.subjects}
+                                            onChange={(e) => setImportSelection(prev => ({ ...prev, subjects: e.target.checked }))}
+                                            className="w-4 h-4 accent-emerald-500"
+                                        />
+                                        <span className="text-sm text-slate-200">Importar <b>{importPreview.subjects.length}</b> materia(s) — reemplaza la lista actual</span>
+                                    </label>
+                                )}
+                                {importPreview.students.length === 0 && importPreview.subjects.length === 0 && (
+                                    <p className="text-sm text-amber-400">El archivo no tiene datos debajo de esos encabezados.</p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                type="button"
+                                onClick={closeImportModal}
+                                className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg font-medium hover:bg-slate-700 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmImport}
+                                disabled={!importPreview || (!importSelection.students && !importSelection.subjects)}
+                                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg font-medium hover:from-teal-700 hover:to-teal-800 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                Importar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
