@@ -2,6 +2,8 @@
   "name": "san-app",
   "private": true,
   "version": "1.0.0",
+  "description": "Sistema de Asignación de Notas — registro de calificaciones para docentes, disponible como app web, de escritorio y móvil.",
+  "author": "Sebastián Sánchez Chacón",
   "type": "module",
   "scripts": {
     "dev": "vite",

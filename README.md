@@ -1,6 +1,18 @@
-# SAN - Sistema de Asignación de Notas
+<p align="center">
+  <img src="docs/screenshots/banner.png" alt="S.A.N — Sistema de Asignación de Notas" width="100%" />
+</p>
 
-> Una herramienta diseñada para simplificar el registro de calificaciones y reducir el trabajo administrativo de los docentes.
+<p align="center">
+  <em>Una herramienta pensada para simplificar el registro de calificaciones y reducir el trabajo administrativo de los docentes.</em>
+</p>
+
+<p align="center">
+  <img alt="React" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-5-b73bfe?logo=vite&logoColor=white">
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-30-2f3241?logo=electron&logoColor=white">
+  <img alt="Capacitor" src="https://img.shields.io/badge/Capacitor-8-119EFF?logo=capacitor&logoColor=white">
+  <img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?logo=tailwindcss&logoColor=white">
+</p>
 
 ---
 
@@ -16,6 +28,20 @@ La filosofía de SAN es simple:
 
 ---
 
+## Vista previa
+
+<p align="center">
+  <img src="docs/screenshots/tabla-notas.png" alt="Tabla de calificaciones por materia" width="100%" />
+  <br/><em>Registro de notas por materia y periodo, con promedios calculados en vivo.</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/resumen.png" alt="Panel de resumen académico" width="100%" />
+  <br/><em>Panel de resumen: promedio general del grupo, por materia y por estudiante.</em>
+</p>
+
+---
+
 ## ¿Por qué nació SAN?
 
 La idea surgió a partir de una necesidad real.
@@ -28,19 +54,42 @@ Por esta razón nació SAN, con el objetivo de convertirse en una aplicación in
 
 ---
 
+## Funcionalidades
+
+* Registro de notas por estudiante, materia y periodo académico.
+* Cálculo automático de promedios por materia y promedio global por estudiante.
+* Panel de resumen con el rendimiento general del grupo.
+* Materias, estudiantes y periodos ("casillas") totalmente personalizables.
+* Anotaciones por evaluación.
+* Todo se guarda localmente en el dispositivo (`localStorage`) — sin necesidad de servidor ni conexión a internet.
+* Disponible como app web, de escritorio (Windows) y móvil (Android).
+
+---
+
+## Tecnología
+
+| Capa | Tecnología |
+|---|---|
+| UI | React 18 + Tailwind CSS |
+| Build | Vite 5 |
+| Escritorio | Electron (`SAN.exe`) |
+| Móvil | Capacitor (`SAN.apk`, Android) |
+
+## Compilar el proyecto
+
+Los pasos para instalar dependencias y generar `SAN.exe` y `SAN.apk` —incluyendo la configuración de firma de Android y los problemas de build ya resueltos— están documentados en **[BUILD.md](BUILD.md)**.
+
+---
+
 ## Objetivo
 
 Desarrollar una aplicación que permita al docente registrar las calificaciones de sus estudiantes de forma rápida, organizada y segura, automatizando los cálculos necesarios y reduciendo el tiempo dedicado a tareas administrativas.
-
----
 
 ## ¿A quién está dirigido?
 
 Actualmente SAN está pensado principalmente para docentes de cualquier nivel educativo.
 
 Aunque el profesor es el usuario principal, los estudiantes también se benefician indirectamente, ya que un registro organizado permite ofrecer mayor transparencia sobre las calificaciones, sus promedios y las observaciones asociadas a cada evaluación.
-
----
 
 ## ¿Qué busca resolver?
 
@@ -88,15 +137,6 @@ La tecnología debe simplificar el trabajo del docente, no hacerlo más difícil
 
 ---
 
-## Compilar el proyecto
-
-SAN corre como app web (Vite + React), como ejecutable de escritorio
-(Electron) y como app de Android (Capacitor). Los pasos para generar
-`SAN.exe` y `SAN.apk`, junto con los problemas de build ya resueltos,
-están documentados en [BUILD.md](BUILD.md).
-
----
-
 ## Autor
 
 **Sebastián Sánchez Chacón**
@@ -105,5 +145,4 @@ Proyecto desarrollado como iniciativa personal para facilitar el trabajo diario 
 
 ---
 
-> "La enseñanza requiere tiempo. Registrar notas no debería quitárselo al docente."
-
+<p align="center"><em>"La enseñanza requiere tiempo. Registrar notas no debería quitárselo al docente."</em></p>
