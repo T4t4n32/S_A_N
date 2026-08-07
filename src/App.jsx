@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import logoIcon from './assets/logo-icon.png';
 
 const DEFAULT_STUDENTS = [
     { id: 1, name: "Aguas Angulo Emely Yuleisi" },
@@ -344,13 +345,16 @@ function App() {
                 <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
                 <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
                 <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                            <span className="text-xs font-bold uppercase tracking-widest text-blue-400">Sistema Académico</span>
+                    <div className="flex items-center gap-4">
+                        <img src={logoIcon} alt="SAN" className="w-12 h-12 md:w-16 md:h-16 shrink-0 drop-shadow-lg" />
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-blue-400">Sistema Académico</span>
+                            </div>
+                            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight gradient-text">I.E.T. CIUDADELA DESEPAZ</h1>
+                            <p className="text-slate-400 text-sm md:text-base mt-2 font-medium">Sede: Nuevo Amanecer · Año Lectivo: 2025-2026</p>
                         </div>
-                        <h1 className="text-xl md:text-3xl font-extrabold tracking-tight gradient-text">I.E.T. CIUDADELA DESEPAZ</h1>
-                        <p className="text-slate-400 text-sm md:text-base mt-2 font-medium">Sede: Nuevo Amanecer · Año Lectivo: 2025-2026</p>
                     </div>
                     <div className="text-right w-full md:w-auto">
                         <div className="inline-block bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 px-5 py-3 rounded-xl backdrop-blur-sm w-full md:w-auto text-center md:text-right">

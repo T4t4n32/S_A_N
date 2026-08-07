@@ -88,6 +88,15 @@ La tecnología debe simplificar el trabajo del docente, no hacerlo más difícil
 
 ---
 
+## Compilar el proyecto
+
+SAN corre como app web (Vite + React), como ejecutable de escritorio
+(Electron) y como app de Android (Capacitor). Los pasos para generar
+`SAN.exe` y `SAN.apk`, junto con los problemas de build ya resueltos,
+están documentados en [BUILD.md](BUILD.md).
+
+---
+
 ## Autor
 
 **Sebastián Sánchez Chacón**

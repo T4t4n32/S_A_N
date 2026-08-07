@@ -22,6 +22,16 @@ allprojects {
         google()
         mavenCentral()
     }
+    configurations.all {
+        resolutionStrategy {
+            // Cordova plugins pull in an old kotlin-stdlib-jdk7/jdk8 (1.6.21) whose
+            // classes now live directly in kotlin-stdlib 1.8.22, causing duplicate
+            // class errors at :app:checkReleaseDuplicateClasses. Pin them together.
+            force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+        }
+    }
 }
 
 task clean(type: Delete) {
