@@ -3,6 +3,7 @@ import logoIcon from './assets/logo-icon.webp';
 
 const TeacherGradebook = lazy(() => import('./components/TeacherGradebook.jsx'));
 const StudentDashboard = lazy(() => import('./components/StudentDashboard.jsx'));
+const PrintReport = lazy(() => import('./components/PrintReport.jsx'));
 
 const DEFAULT_STUDENTS = [
     { id: 1, name: "Aguas Angulo Emely Yuleisi" },
@@ -61,15 +62,25 @@ const DEFAULT_SUBJECTS = [
 ];
 
 const DEFAULT_SLOTS = [
-    { id: 1, name: "Periodo 1", description: "Evaluación de desempeño, talleres y pruebas del primer periodo académico.", hasDescription: true },
-    { id: 2, name: "Periodo 2", description: "Evaluación de desempeño, talleres y pruebas del segundo periodo académico.", hasDescription: true },
-    { id: 3, name: "Periodo 3", description: "Evaluación de desempeño, talleres y pruebas del tercer periodo académico.", hasDescription: true },
-    { id: 4, name: "Periodo 4", description: "Evaluación de desempeño, talleres y pruebas del cuarto periodo académico.", hasDescription: true },
+    { id: 1, name: "Nota 1", description: "Evaluación de desempeño, talleres y pruebas del primer periodo académico.", hasDescription: true },
+    { id: 2, name: "Nota 2", description: "Evaluación de desempeño, talleres y pruebas del segundo periodo académico.", hasDescription: true },
+    { id: 3, name: "Nota 3", description: "Evaluación de desempeño, talleres y pruebas del tercer periodo académico.", hasDescription: true },
+    { id: 4, name: "Nota 4", description: "Evaluación de desempeño, talleres y pruebas del cuarto periodo académico.", hasDescription: true },
     { id: 5, name: "Recuperación / Extra", description: "", hasDescription: false }
 ];
 
+// Old installs may still have grade slots literally named "Periodo N" from
+// before this rename — only rewrite exact legacy defaults, never a name a
+// teacher/student customized themselves.
+const LEGACY_SLOT_RENAME = { "Periodo 1": "Nota 1", "Periodo 2": "Nota 2", "Periodo 3": "Nota 3", "Periodo 4": "Nota 4" };
+function migrateSlotNames(slots) {
+    return (slots || []).map(s => LEGACY_SLOT_RENAME[s.name] ? { ...s, name: LEGACY_SLOT_RENAME[s.name] } : s);
+}
+
 const GRADES_STORAGE_KEY = "ciudadela_desepaz_notas_3_4_v5_dark";
+const PERIODS_STORAGE_KEY = "san_periods_v1";
 const CONFIG_STORAGE_KEY = "san_config_v1";
+const PERIOD_TYPES = ["bimestral", "trimestral", "semestral"];
 
 const EMPTY_CONFIG_FORM = { role: "profesor", name: "", institution: "", group: "" };
 
@@ -137,6 +148,17 @@ function extractListsFromRows(rows) {
         }
     }
     return { students, subjects, studentColFound: studentCol !== -1, subjectColFound: subjectCol !== -1 };
+}
+
+function downloadCSV(rows, filename) {
+    const csv = rows.map(r => r.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 function ConfigFields({ form, onChange }) {
@@ -210,6 +232,14 @@ function App() {
     const [showSummary, setShowSummary] = useState(false);
     const [showSlotManager, setShowSlotManager] = useState(false);
 
+    const [periods, setPeriods] = useState([]);
+    const [activePeriodId, setActivePeriodId] = useState(null);
+    const [showPeriodsModal, setShowPeriodsModal] = useState(false);
+    const [periodForm, setPeriodForm] = useState({ name: "", type: "bimestral", copyRoster: true });
+
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [showPrintReport, setShowPrintReport] = useState(false);
+
     const [config, setConfig] = useState(null);
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [configForm, setConfigForm] = useState(EMPTY_CONFIG_FORM);
@@ -227,25 +257,51 @@ function App() {
         text: ""
     });
 
+    const defaultDataForRole = useCallback((role, name) => {
+        return role === "estudiante"
+            ? { students: [{ id: 1, name }], subjects: [], gradeSlots: DEFAULT_SLOTS, grades: {}, annotations: {} }
+            : { students: DEFAULT_STUDENTS, subjects: DEFAULT_SUBJECTS, gradeSlots: DEFAULT_SLOTS, grades: {}, annotations: {} };
+    }, []);
+
+    const loadPeriodIntoState = useCallback((periodData) => {
+        setStudents(periodData.students || []);
+        setSubjects(periodData.subjects || []);
+        setGradeSlots(migrateSlotNames(periodData.gradeSlots));
+        setGrades(periodData.grades || {});
+        setAnnotations(periodData.annotations || {});
+        setActiveSubjectId(periodData.subjects?.[0]?.id ?? null);
+    }, []);
+
+    // First run ever loads (in order of preference): the new multi-period
+    // store, then a pre-"periodos académicos" flat save (wrapped into a
+    // single period so nothing is lost), then hardcoded defaults.
     useEffect(() => {
-        const saved = localStorage.getItem(GRADES_STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            setStudents(parsed.students || DEFAULT_STUDENTS);
-            setSubjects(parsed.subjects || DEFAULT_SUBJECTS);
-            setGradeSlots(parsed.gradeSlots || DEFAULT_SLOTS);
-            setGrades(parsed.grades || {});
-            setAnnotations(parsed.annotations || {});
-            if (parsed.subjects && parsed.subjects.length > 0) {
-                setActiveSubjectId(parsed.subjects[0].id);
-            }
+        const savedPeriods = localStorage.getItem(PERIODS_STORAGE_KEY);
+        if (savedPeriods) {
+            const parsed = JSON.parse(savedPeriods);
+            const active = parsed.periods.find(p => p.id === parsed.activePeriodId) || parsed.periods[0];
+            setPeriods(parsed.periods);
+            setActivePeriodId(active.id);
+            loadPeriodIntoState(active.data);
         } else {
-            setStudents(DEFAULT_STUDENTS);
-            setSubjects(DEFAULT_SUBJECTS);
-            setGradeSlots(DEFAULT_SLOTS);
-            setGrades({});
-            setAnnotations({});
-            setActiveSubjectId(1);
+            const legacyFlat = localStorage.getItem(GRADES_STORAGE_KEY);
+            const initialData = legacyFlat ? JSON.parse(legacyFlat) : defaultDataForRole("profesor", "");
+            const firstPeriod = {
+                id: `p_${Date.now()}`,
+                name: "Periodo Académico 1",
+                type: "bimestral",
+                createdAt: new Date().toISOString(),
+                data: {
+                    students: initialData.students || DEFAULT_STUDENTS,
+                    subjects: initialData.subjects || DEFAULT_SUBJECTS,
+                    gradeSlots: migrateSlotNames(initialData.gradeSlots || DEFAULT_SLOTS),
+                    grades: initialData.grades || {},
+                    annotations: initialData.annotations || {}
+                }
+            };
+            setPeriods([firstPeriod]);
+            setActivePeriodId(firstPeriod.id);
+            loadPeriodIntoState(firstPeriod.data);
         }
 
         const savedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
@@ -254,10 +310,13 @@ function App() {
         }
 
         setIsLoaded(true);
-    }, []);
+    }, [loadPeriodIntoState, defaultDataForRole]);
 
-    const latestGradesDataRef = useRef(null);
-    latestGradesDataRef.current = { students, subjects, gradeSlots, grades, annotations };
+    const latestFullDataRef = useRef(null);
+    latestFullDataRef.current = {
+        activePeriodId,
+        periods: periods.map(p => p.id === activePeriodId ? { ...p, data: { students, subjects, gradeSlots, grades, annotations } } : p)
+    };
 
     // Debounced so a burst of keystrokes (typing several grades) doesn't hit
     // localStorage on every single one — flushed immediately on tab close/
@@ -265,14 +324,16 @@ function App() {
     useEffect(() => {
         if (!isLoaded) return;
         const handle = setTimeout(() => {
-            localStorage.setItem(GRADES_STORAGE_KEY, JSON.stringify(latestGradesDataRef.current));
+            localStorage.setItem(PERIODS_STORAGE_KEY, JSON.stringify(latestFullDataRef.current));
         }, 400);
         return () => clearTimeout(handle);
-    }, [students, subjects, gradeSlots, grades, annotations, isLoaded]);
+    }, [students, subjects, gradeSlots, grades, annotations, activePeriodId, periods, isLoaded]);
 
     useEffect(() => {
         const flush = () => {
-            localStorage.setItem(GRADES_STORAGE_KEY, JSON.stringify(latestGradesDataRef.current));
+            if (latestFullDataRef.current) {
+                localStorage.setItem(PERIODS_STORAGE_KEY, JSON.stringify(latestFullDataRef.current));
+            }
         };
         window.addEventListener("beforeunload", flush);
         return () => window.removeEventListener("beforeunload", flush);
@@ -283,6 +344,61 @@ function App() {
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
         }
     }, [config]);
+
+    const activePeriod = periods.find(p => p.id === activePeriodId);
+
+    const switchToPeriod = useCallback((periodId) => {
+        if (periodId === activePeriodId) { setShowPeriodsModal(false); return; }
+        const target = periods.find(p => p.id === periodId);
+        if (!target) return;
+        setPeriods(prev => prev.map(p => p.id === activePeriodId ? { ...p, data: { students, subjects, gradeSlots, grades, annotations } } : p));
+        loadPeriodIntoState(target.data);
+        setActivePeriodId(periodId);
+        setShowPeriodsModal(false);
+    }, [periods, activePeriodId, students, subjects, gradeSlots, grades, annotations, loadPeriodIntoState]);
+
+    const createNewPeriod = useCallback(() => {
+        const name = periodForm.name.trim() || `Periodo Académico ${periods.length + 1}`;
+        const newId = `p_${Date.now()}`;
+        const data = periodForm.copyRoster
+            ? { students: JSON.parse(JSON.stringify(students)), subjects: JSON.parse(JSON.stringify(subjects)), gradeSlots: JSON.parse(JSON.stringify(gradeSlots)), grades: {}, annotations: {} }
+            : defaultDataForRole(config?.role, config?.name || "");
+        const newPeriod = { id: newId, name, type: periodForm.type, createdAt: new Date().toISOString(), data };
+
+        setPeriods(prev => [
+            ...prev.map(p => p.id === activePeriodId ? { ...p, data: { students, subjects, gradeSlots, grades, annotations } } : p),
+            newPeriod
+        ]);
+        loadPeriodIntoState(data);
+        setActivePeriodId(newId);
+        setShowPeriodsModal(false);
+        setPeriodForm({ name: "", type: "bimestral", copyRoster: true });
+    }, [periodForm, periods, activePeriodId, students, subjects, gradeSlots, grades, annotations, config, defaultDataForRole, loadPeriodIntoState]);
+
+    const renamePeriod = useCallback((periodId) => {
+        const period = periods.find(p => p.id === periodId);
+        const newName = prompt("Nuevo nombre del periodo académico:", period?.name);
+        if (newName && newName.trim()) {
+            setPeriods(prev => prev.map(p => p.id === periodId ? { ...p, name: newName.trim() } : p));
+        }
+    }, [periods]);
+
+    const deletePeriod = useCallback((periodId) => {
+        if (periods.length <= 1) return;
+        if (!confirm("¿Eliminar este periodo académico y todas sus notas? Esta acción no se puede deshacer.")) return;
+        const next = periods.filter(p => p.id !== periodId);
+        setPeriods(next);
+        if (periodId === activePeriodId) {
+            const fallback = next[0];
+            loadPeriodIntoState(fallback.data);
+            setActivePeriodId(fallback.id);
+        }
+    }, [periods, activePeriodId, loadPeriodIntoState]);
+
+    const resetActivePeriod = useCallback(() => {
+        if (!confirm("¿Restaurar este periodo académico a los valores originales? Se perderán los cambios del periodo actual (los demás periodos académicos no se ven afectados).")) return;
+        loadPeriodIntoState(defaultDataForRole(config?.role, config?.name || ""));
+    }, [config, defaultDataForRole, loadPeriodIntoState]);
 
     const openConfigModal = useCallback(() => {
         setConfigForm(config || EMPTY_CONFIG_FORM);
@@ -368,9 +484,9 @@ function App() {
     }, [annotationModal]);
 
     const addGradeSlot = () => {
-        const name = prompt("Nombre de la nueva casilla de nota (ej: Trabajo Final):");
+        const name = prompt("Nombre de la nueva nota (ej: Trabajo Final):");
         if (name && name.trim()) {
-            const hasDesc = confirm("¿Desea que esta casilla tenga una descripción/explicación para el estudiante?");
+            const hasDesc = confirm("¿Desea que esta nota tenga una descripción/explicación para el estudiante?");
             let description = "";
             if (hasDesc) {
                 description = prompt("Descripción o explicación de esta nota:") || "";
@@ -382,14 +498,14 @@ function App() {
 
     const editGradeSlot = (slotId) => {
         const slot = gradeSlots.find(s => s.id === slotId);
-        const newName = prompt("Editar nombre de la casilla:", slot.name);
+        const newName = prompt("Editar nombre de la nota:", slot.name);
         if (newName && newName.trim()) {
             let newDesc = slot.description;
             let newHasDesc = slot.hasDescription;
             if (slot.hasDescription) {
                 newDesc = prompt("Editar descripción:", slot.description) || "";
             } else {
-                const addDesc = confirm("¿Desea agregar una descripción a esta casilla?");
+                const addDesc = confirm("¿Desea agregar una descripción a esta nota?");
                 if (addDesc) {
                     newHasDesc = true;
                     newDesc = prompt("Descripción o explicación de esta nota:") || "";
@@ -400,7 +516,7 @@ function App() {
     };
 
     const removeGradeSlot = (slotId) => {
-        if (confirm("¿Está seguro de eliminar esta casilla de notas? Se borrarán todas las notas y anotaciones asociadas.")) {
+        if (confirm("¿Está seguro de eliminar esta nota? Se borrarán todas las calificaciones y anotaciones asociadas.")) {
             setGradeSlots(gradeSlots.filter(s => s.id !== slotId));
             setGrades(prev => {
                 const next = { ...prev };
@@ -532,20 +648,12 @@ function App() {
     }, [config]);
 
     const downloadImportTemplate = useCallback(() => {
-        const rows = [
+        downloadCSV([
             ["Estudiantes", "Materias"],
             ["Juan Perez", "Matemáticas"],
             ["Maria Lopez", "Lengua Castellana"],
             ["", "Ciencias Naturales"]
-        ];
-        const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-        const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "plantilla_san.csv";
-        a.click();
-        URL.revokeObjectURL(url);
+        ], "plantilla_san.csv");
     }, []);
 
     const confirmImport = useCallback(() => {
@@ -639,6 +747,43 @@ function App() {
         return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
     }, [grades, gradeSlots, students]);
 
+    const exportCSV = useCallback(() => {
+        const rows = [];
+        if (config.role === "profesor") {
+            rows.push(["Estudiante", "Materia", ...gradeSlots.map(s => s.name), "Promedio Materia", "Promedio Global"]);
+            students.forEach(stu => {
+                subjects.forEach(subj => {
+                    const row = [stu.name, subj.name];
+                    gradeSlots.forEach(slot => {
+                        const g = grades[`${stu.id}-${subj.id}-${slot.id}`];
+                        row.push(g !== undefined ? g : "");
+                    });
+                    row.push(getStudentSubjectAverage(stu.id, subj.id));
+                    row.push(getStudentGlobalAverage(stu.id));
+                    rows.push(row);
+                });
+            });
+        } else {
+            const studentId = students[0]?.id;
+            rows.push(["Materia", ...gradeSlots.map(s => s.name), "Promedio", "Anotaciones"]);
+            subjects.forEach(subj => {
+                const row = [subj.name];
+                const notes = [];
+                gradeSlots.forEach(slot => {
+                    const key = `${studentId}-${subj.id}-${slot.id}`;
+                    const g = grades[key];
+                    row.push(g !== undefined ? g : "");
+                    if (annotations[key]) notes.push(`${slot.name}: ${annotations[key]}`);
+                });
+                row.push(getStudentSubjectAverage(studentId, subj.id));
+                row.push(notes.join(" | "));
+                rows.push(row);
+            });
+        }
+        const prefix = config.role === "profesor" ? "notas_grupo" : "mis_notas";
+        downloadCSV(rows, `${prefix}_${new Date().toISOString().slice(0, 10)}.csv`);
+    }, [config, students, subjects, gradeSlots, grades, annotations, getStudentSubjectAverage, getStudentGlobalAverage]);
+
     const generalAvg = useMemo(() => {
         const vals = Object.values(grades).filter(g => g !== "" && g !== undefined).map(parseFloat);
         if (vals.length === 0) return "-";
@@ -670,6 +815,30 @@ function App() {
         );
     }
 
+    if (showPrintReport) {
+        return (
+            <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500">Cargando informe...</div>}>
+                <PrintReport
+                    role={config.role}
+                    institution={config.institution}
+                    name={config.name}
+                    group={config.group}
+                    periodName={activePeriod?.name}
+                    subjects={subjects}
+                    gradeSlots={gradeSlots}
+                    students={students}
+                    grades={grades}
+                    annotations={annotations}
+                    getStudentSubjectAverage={getStudentSubjectAverage}
+                    getStudentGlobalAverage={getStudentGlobalAverage}
+                    getSubjectGlobalAverage={getSubjectGlobalAverage}
+                    generalAvg={generalAvg}
+                    onClose={() => setShowPrintReport(false)}
+                />
+            </Suspense>
+        );
+    }
+
     return (
         <div className="min-h-screen p-3 md:p-6 max-w-7xl mx-auto pb-20">
             <header className="mb-6 glass-card p-5 md:p-7 rounded-2xl relative overflow-hidden">
@@ -685,6 +854,17 @@ function App() {
                             </div>
                             <h1 className="text-xl md:text-3xl font-extrabold tracking-tight gradient-text">{config.institution}</h1>
                             <p className="text-slate-400 text-sm md:text-base mt-2 font-medium">Año Lectivo: {new Date().getFullYear()}</p>
+                            {activePeriod && (
+                                <button
+                                    onClick={() => setShowPeriodsModal(true)}
+                                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 rounded-full px-3 py-1 hover:bg-indigo-500/20 transition-colors"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    {activePeriod.name}
+                                    {periods.length > 1 && <span className="text-indigo-400/70">· {periods.length} periodos</span>}
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </button>
+                            )}
                         </div>
                     </div>
                     <div className="text-right w-full md:w-auto flex items-center gap-2 justify-end">
@@ -709,7 +889,7 @@ function App() {
                 )}
                 <button onClick={() => setShowSlotManager(!showSlotManager)} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-indigo-500/20 text-indigo-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                    {config.role === "profesor" ? "Casillas" : "Periodos"}
+                    Notas
                 </button>
                 {config.role === "profesor" && (
                     <button onClick={addStudent} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
@@ -725,7 +905,11 @@ function App() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 12v9m0-9l-3 3m3-3l3 3"></path></svg>
                     Importar
                 </button>
-                <button onClick={() => { if(confirm('¿Restaurar datos originales? Se perderán todos los cambios.')) { localStorage.removeItem(GRADES_STORAGE_KEY); window.location.reload(); } }} className="flex items-center gap-2 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 text-slate-400 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm ml-auto md:ml-0">
+                <button onClick={() => setShowExportModal(true)} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-cyan-500/20 text-cyan-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Exportar
+                </button>
+                <button onClick={resetActivePeriod} className="flex items-center gap-2 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 text-slate-400 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm ml-auto md:ml-0">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                     Reset
                 </button>
@@ -734,9 +918,9 @@ function App() {
             {showSlotManager && (
                 <div className="mb-6 glass-card p-5 md:p-6 rounded-2xl animate-fade-in">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-bold text-white">{config.role === "profesor" ? "Administración de Casillas de Notas" : "Tus Periodos de Notas"}</h3>
+                        <h3 className="text-lg font-bold text-white">{config.role === "profesor" ? "Administración de Notas" : "Tus Notas"}</h3>
                         <button onClick={addGradeSlot} className="text-sm bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-2 rounded-lg font-semibold hover:bg-indigo-500/30 transition-colors">
-                            {config.role === "profesor" ? "+ Agregar Casilla" : "+ Agregar Periodo"}
+                            + Agregar Nota
                         </button>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -843,6 +1027,140 @@ function App() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {showPeriodsModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="glass-card rounded-2xl w-full max-w-lg p-6 border border-slate-700/50 shadow-2xl max-h-[85vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <div className="p-2 bg-indigo-500/20 rounded-lg">
+                                    <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                </div>
+                                Periodos Académicos
+                            </h3>
+                            <button onClick={() => setShowPeriodsModal(false)} className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-slate-400 mb-4">
+                            Cada periodo académico (bimestre, trimestre o semestre) guarda su propio conjunto de {config.role === "profesor" ? "estudiantes, materias" : "materias"} y notas, sin mezclarse con los demás. Cierra un periodo y empieza uno nuevo cuando cambie el ciclo, sin perder lo anterior.
+                        </p>
+
+                        <div className="space-y-2 mb-6">
+                            {periods.map(p => (
+                                <div key={p.id} className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${p.id === activePeriodId ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-slate-700/50 bg-slate-800/40'}`}>
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-white text-sm truncate">{p.name}</p>
+                                        <p className="text-xs text-slate-500 capitalize">{p.type} · creado {new Date(p.createdAt).toLocaleDateString('es-CO')}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {p.id === activePeriodId ? (
+                                            <span className="text-xs font-bold text-indigo-300 px-2">Activo</span>
+                                        ) : (
+                                            <button onClick={() => switchToPeriod(p.id)} className="text-xs font-semibold text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg px-3 py-1.5 transition-colors">
+                                                Activar
+                                            </button>
+                                        )}
+                                        <button onClick={() => renamePeriod(p.id)} className="p-1.5 hover:bg-blue-500/20 rounded text-blue-400 transition-colors" title="Renombrar">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                        {periods.length > 1 && (
+                                            <button onClick={() => deletePeriod(p.id)} className="p-1.5 hover:bg-red-500/20 rounded text-red-400 transition-colors" title="Eliminar">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="border-t border-slate-700/50 pt-4">
+                            <h4 className="text-sm font-bold text-white mb-3">+ Crear nuevo periodo académico</h4>
+                            <div className="space-y-3">
+                                <input
+                                    type="text"
+                                    value={periodForm.name}
+                                    onChange={(e) => setPeriodForm(p => ({ ...p, name: e.target.value }))}
+                                    placeholder={`Ej: Semestre 2 - ${new Date().getFullYear()}`}
+                                    className="w-full p-3 bg-slate-900/60 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none"
+                                />
+                                <div className="grid grid-cols-3 gap-2">
+                                    {PERIOD_TYPES.map(t => (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            onClick={() => setPeriodForm(p => ({ ...p, type: t }))}
+                                            className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize border transition-colors ${periodForm.type === t ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800/60 text-slate-300 border-slate-700/50 hover:bg-slate-800'}`}
+                                        >
+                                            {t}
+                                        </button>
+                                    ))}
+                                </div>
+                                <label className="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700/50 rounded-lg cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={periodForm.copyRoster}
+                                        onChange={(e) => setPeriodForm(p => ({ ...p, copyRoster: e.target.checked }))}
+                                        className="w-4 h-4 accent-indigo-500"
+                                    />
+                                    <span className="text-sm text-slate-200">Copiar {config.role === "profesor" ? "estudiantes y materias" : "materias"} actuales (sin las notas)</span>
+                                </label>
+                                <button
+                                    onClick={createNewPeriod}
+                                    className="w-full px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg"
+                                >
+                                    Crear e iniciar este periodo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showExportModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="glass-card rounded-2xl w-full max-w-sm p-6 border border-slate-700/50 shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <div className="p-2 bg-cyan-500/20 rounded-lg">
+                                    <svg className="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                </div>
+                                Exportar notas
+                            </h3>
+                            <button onClick={() => setShowExportModal(false)} className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => { exportCSV(); setShowExportModal(false); }}
+                                className="w-full flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-left transition-colors"
+                            >
+                                <div className="p-2 bg-emerald-500/20 rounded-lg shrink-0">
+                                    <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-white text-sm">Descargar CSV</p>
+                                    <p className="text-xs text-slate-400">Para abrir en Excel o Google Sheets</p>
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => { setShowPrintReport(true); setShowExportModal(false); }}
+                                className="w-full flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-left transition-colors"
+                            >
+                                <div className="p-2 bg-blue-500/20 rounded-lg shrink-0">
+                                    <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a1 1 0 001-1v-4a1 1 0 00-1-1H9a1 1 0 00-1 1v4a1 1 0 001 1zm8-12V5a2 2 0 00-2-2H7a2 2 0 00-2 2v4h14z"></path></svg>
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-white text-sm">Ver informe para imprimir</p>
+                                    <p className="text-xs text-slate-400">Vista lista para imprimir o guardar como PDF</p>
+                                </div>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -960,7 +1278,7 @@ function App() {
                                 <span className="ml-2 font-medium">{subjects.find(s => s.id === annotationModal.subjectId)?.name}</span>
                             </p>
                             <p className="text-sm text-slate-300">
-                                <span className="text-slate-500 text-xs uppercase tracking-wider font-semibold">{config.role === "profesor" ? "Casilla:" : "Periodo:"}</span>
+                                <span className="text-slate-500 text-xs uppercase tracking-wider font-semibold">Nota:</span>
                                 <span className="ml-2 font-medium">{gradeSlots.find(s => s.id === annotationModal.slotId)?.name}</span>
                             </p>
                         </div>
@@ -968,7 +1286,7 @@ function App() {
                         <textarea
                             value={annotationModal.text}
                             onChange={(e) => setAnnotationModal(prev => ({ ...prev, text: e.target.value }))}
-                            placeholder={config.role === "profesor" ? "Ej: Estuvo enfermo, presentó taller extemporáneo, excelente participación..." : "Ej: Quiz de ecuaciones, taller de laboratorio, examen del tercer periodo..."}
+                            placeholder={config.role === "profesor" ? "Ej: Estuvo enfermo, presentó taller extemporáneo, excelente participación..." : "Ej: Quiz de ecuaciones, taller de laboratorio, examen final del corte..."}
                             className="w-full h-32 p-3 bg-slate-900/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 outline-none resize-none text-sm text-slate-200 placeholder-slate-600"
                         />
                         
