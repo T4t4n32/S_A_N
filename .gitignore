@@ -1,5 +1,8 @@
 node_modules
 
+# local tooling — not part of the published project
+.claude/
+
 # build outputs
 release/
 android/app/build/
