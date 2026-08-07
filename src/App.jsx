@@ -211,6 +211,25 @@ function App() {
         setShowConfigModal(false);
     }, [configForm]);
 
+    // Only runs once, from the first-time welcome screen — unlike saveConfig
+    // (used by the later "editar configuración" modal), this is allowed to
+    // seed the roster because at this point it still holds the untouched
+    // DEFAULT_STUDENTS placeholder, not real data from any teacher.
+    const completeOnboarding = useCallback((e) => {
+        e.preventDefault();
+        const name = configForm.name.trim();
+        if (!name || !configForm.institution.trim()) return;
+        if (configForm.role === "estudiante") {
+            setStudents([{ id: 1, name }]);
+        }
+        setConfig({
+            role: configForm.role,
+            name,
+            institution: configForm.institution.trim(),
+            group: configForm.group.trim()
+        });
+    }, [configForm]);
+
     const updateGrade = useCallback((studentId, subjectId, slotId, value) => {
         const key = `${studentId}-${subjectId}-${slotId}`;
         
@@ -444,7 +463,7 @@ function App() {
                         <h1 className="text-xl font-extrabold tracking-tight gradient-text">Bienvenido a SAN</h1>
                         <p className="text-slate-400 text-sm mt-2">Antes de empezar, cuéntanos quién eres y en dónde vas a usar el sistema.</p>
                     </div>
-                    <form onSubmit={saveConfig}>
+                    <form onSubmit={completeOnboarding}>
                         <ConfigFields form={configForm} onChange={setConfigForm} />
                         <button
                             type="submit"
@@ -497,10 +516,12 @@ function App() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                     Casillas
                 </button>
-                <button onClick={addStudent} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                    Estudiante
-                </button>
+                {config.role === "profesor" && (
+                    <button onClick={addStudent} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                        Estudiante
+                    </button>
+                )}
                 <button onClick={addSubject} className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-800 border border-blue-500/20 text-blue-300 px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg flex-1 md:flex-none justify-center text-sm">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                     Materia
@@ -649,7 +670,7 @@ function App() {
                                         <span className="text-purple-400 text-[10px]">Global</span>
                                     </div>
                                 </th>
-                                <th className="sticky-header px-1 md:px-2 py-3 bg-slate-900 min-w-[40px] md:min-w-[50px]"></th>
+                                {config.role === "profesor" && <th className="sticky-header px-1 md:px-2 py-3 bg-slate-900 min-w-[40px] md:min-w-[50px]"></th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
@@ -696,11 +717,13 @@ function App() {
                                     <td className={`px-2 md:px-3 py-3 font-bold text-center border-l border-slate-700/50 bg-purple-500/5 text-sm md:text-base ${getAvgColor(getStudentGlobalAverage(student.id))}`}>
                                         {getStudentGlobalAverage(student.id)}
                                     </td>
-                                    <td className="px-1 md:px-2 py-3 text-center">
-                                        <button onClick={() => removeStudent(student.id)} className="p-2 hover:bg-red-500/20 text-slate-600 hover:text-red-400 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center mx-auto" title="Eliminar estudiante">
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                        </button>
-                                    </td>
+                                    {config.role === "profesor" && (
+                                        <td className="px-1 md:px-2 py-3 text-center">
+                                            <button onClick={() => removeStudent(student.id)} className="p-2 hover:bg-red-500/20 text-slate-600 hover:text-red-400 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center mx-auto" title="Eliminar estudiante">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
