@@ -38,6 +38,8 @@ Como primera solución se desarrolló una aplicación en HTML que podía abrirse
 
 Por esta razón nació SAN, con el objetivo de convertirse en una aplicación independiente que pueda ejecutarse como una aplicación de escritorio y como una aplicación móvil, manteniendo la misma simplicidad de uso.
 
+> Los prototipos y los intentos de empaquetado previos a la versión actual quedaron documentados en **[docs/historia](docs/historia/README.md)**.
+
 ---
 
 ## Funcionalidades

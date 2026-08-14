@@ -1,0 +1,27 @@
+{
+  "name": "san-sistema-academico",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de Notas SAN empaquetado para Android con Capacitor",
+  "scripts": {
+    "build:web": "node scripts/preparar-web.cjs && tailwindcss -c tailwind.config.cjs -i src/tailwind.input.css -o www/tailwind.css --minify",
+    "sync:android": "npm run build:web && cap sync android",
+    "apk": "bash construir-apk.sh",
+    "android:open": "npm run build:web && cap sync android && cap open android"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor/android": "latest-7",
+    "@capacitor/core": "latest-7",
+    "@fontsource/inter": "5.0.18",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@babel/standalone": "7.21.4",
+    "@capacitor/cli": "latest-7",
+    "tailwindcss": "3.4.17"
+  }
+}

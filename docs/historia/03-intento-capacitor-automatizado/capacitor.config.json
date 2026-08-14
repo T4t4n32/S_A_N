@@ -1,0 +1,8 @@
+{
+  "appId": "co.edu.ciudadeladesepaz.san",
+  "appName": "SAN",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0a0a0f"
+  }
+}
