@@ -58,10 +58,15 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install required SDK packages (platform 35 + build-tools)
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+      # ubuntu-latest already ships an Android SDK at $ANDROID_HOME
+      # (github.com/actions/runner-images) — android-actions/setup-android@v3
+      # is unmaintained and fails outright on current SDK manifests (it
+      # tries to install the long-discontinued standalone "tools" package),
+      # so this drives the preinstalled sdkmanager directly instead.
+      - name: Accept SDK licenses & install platform 35 + build-tools
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
 
       - run: npx cap sync android
 
