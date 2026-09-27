@@ -69,16 +69,30 @@ jobs:
       # as secrets; otherwise falls back to a debug-signed APK, which is
       # still perfectly installable by sideloading — just not upgradable
       # in place by a future release signed with a *different* key.
+      #
+      # The `secrets` context can't be referenced from a step's `if:` (GitHub
+      # rejects the whole workflow at parse time with "Unrecognized
+      # named-value: 'secrets'"), so the values are mapped to env vars here
+      # and the branch lives in the shell script instead — also avoids
+      # interpolating secrets directly into the run command string.
       - name: Restore release keystore (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > app/san-release-key.jks
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "No release keystore configured — building a debug-signed APK instead."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/san-release-key.jks
           cat > keystore.properties <<EOF
           storeFile=san-release-key.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
       - name: Build APK
