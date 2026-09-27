@@ -36,7 +36,8 @@ desarrollo día a día o si prefieres no depender de Actions.
 
 ## Requisitos previos (build local)
 
-- Node.js 18+ y npm
+- Node.js 22+ y npm (`@capacitor/cli` exige `>=22`; con Node 20 el build
+  web compila igual, pero `cap sync`/`cap open` fallan)
 - Para `SAN.exe` en Linux: [Wine](https://www.winehq.org/) (permite que
   `electron-builder` empaquete un `.exe` de Windows sin tener Windows)
 - Para `SAN.apk`: Android SDK (`ANDROID_HOME`/`ANDROID_SDK_ROOT`
