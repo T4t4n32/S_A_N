@@ -50,7 +50,7 @@ Por esta razón nació SAN, con el objetivo de convertirse en una aplicación in
 * Materias, estudiantes y periodos ("casillas") totalmente personalizables.
 * Anotaciones por evaluación.
 * Todo se guarda localmente en el dispositivo (`localStorage`) — sin necesidad de servidor ni conexión a internet.
-* Disponible como app web, de escritorio (Windows) y móvil (Android).
+* Disponible como app web (instalable como PWA, con funcionamiento offline), de escritorio (Windows) y móvil (Android).
 
 ---
 
@@ -65,7 +65,7 @@ Por esta razón nació SAN, con el objetivo de convertirse en una aplicación in
 
 ## Compilar el proyecto
 
-Los pasos para instalar dependencias y generar `SAN.exe` y `SAN.apk` —incluyendo la configuración de firma de Android y los problemas de build ya resueltos— están documentados en **[BUILD.md](BUILD.md)**.
+`SAN.exe` y `SAN.apk` se generan automáticamente con GitHub Actions al crear un tag de versión — no hace falta Wine ni Android SDK instalados a mano. Los pasos para instalar dependencias, el pipeline de CI y el build local/manual —incluyendo la configuración de firma de Android y los problemas de build ya resueltos— están documentados en **[BUILD.md](BUILD.md)**.
 
 ---
 

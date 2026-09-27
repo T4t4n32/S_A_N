@@ -1,0 +1,120 @@
+name: Release SAN.exe / SAN.apk
+
+# Builds both distributables on hosted runners — SAN.exe natively on Windows
+# (no Wine needed, unlike the local flow in BUILD.md) and SAN.apk on Ubuntu
+# with the Android SDK — then publishes them to a GitHub Release.
+#
+# Push a tag like "v1.2.0" to cut a release, or run this workflow manually
+# from the Actions tab (workflow_dispatch) to just produce build artifacts
+# without publishing a release.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build SAN.exe (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Package portable SAN.exe
+        run: npx electron-builder --win --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SAN.exe
+          path: release/SAN.exe
+          if-no-files-found: error
+
+  build-android:
+    name: Build SAN.apk (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install required SDK packages (platform 35 + build-tools)
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+
+      - run: npx cap sync android
+
+      # Signs a real release build when the repo owner has added a keystore
+      # as secrets; otherwise falls back to a debug-signed APK, which is
+      # still perfectly installable by sideloading — just not upgradable
+      # in place by a future release signed with a *different* key.
+      - name: Restore release keystore (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: android
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > app/san-release-key.jks
+          cat > keystore.properties <<EOF
+          storeFile=san-release-key.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          if [ -f keystore.properties ]; then
+            ./gradlew assembleRelease --no-daemon
+            echo "APK_PATH=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
+          else
+            ./gradlew assembleDebug --no-daemon
+            echo "APK_PATH=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
+          fi
+
+      - name: Rename to SAN.apk
+        run: cp "$APK_PATH" SAN.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SAN.apk
+          path: SAN.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/SAN.exe
+            artifacts/SAN.apk
+          generate_release_notes: true
